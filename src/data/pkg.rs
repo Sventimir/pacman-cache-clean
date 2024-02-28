@@ -1,12 +1,21 @@
+use std::io;
 use std::fs;
+use std::path::Path;
 use std::time;
 
 
-#[derive(PartialEq, Eq, Debug)]
+pub const CACHE_DIR : &str = "/var/cache/pacman/pkg";
+
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Pkg {
   pub pkg_name: String,
   pub file_name: String,
   ctime: time::SystemTime
+}
+
+pub enum ReadError {
+  ParseError(String),
+  MetaReadError(String, io::Error)
 }
 
 fn split_on_colon(fname: &str) -> Option<String> {
@@ -62,22 +71,34 @@ impl Pkg {
     }
   }
 
-  pub fn new(file_name: String) -> Option<Pkg> {
+  pub fn new(file_name: String) -> Result<Pkg, ReadError> {
+    let cache_dir = Path::new(CACHE_DIR);
     let pkg_name = match Pkg::parse_pkg_name(&file_name) {
-      None => return None,
+      None => return Err(ReadError::ParseError(file_name)),
       Some(name) => name
     };
-    let meta = match fs::metadata(&file_name) {
+    let meta = match fs::metadata(cache_dir.join(&file_name)) {
       Ok(meta) => meta,
-      Err(_) => return None
+      Err(e) => return Err(ReadError::MetaReadError(file_name, e))
     };
     let created = match meta.created() {
       Ok(ctime) => ctime,
-      Err(_) => return None
+      Err(e) => return Err(ReadError::MetaReadError(file_name, e))
     };
-    Some(Pkg { pkg_name, file_name, ctime: created })
+    Ok(Pkg { pkg_name, file_name, ctime: created })
   }
 
+}
+
+impl ReadError {
+  pub fn show(&self) -> String {
+    match self {
+      ReadError::MetaReadError(fname, err) =>
+        format!("Could not read metadata for file '{}' ({})!", fname, err),
+      ReadError::ParseError(fname) =>
+        format!("Could not parse filename: '{}'!", fname)
+    }
+  }
 }
 
 pub struct PkgWithVersions {
@@ -90,12 +111,12 @@ impl PkgWithVersions {
     PkgWithVersions { current: pkg, versions: Vec::new() }
   }
 
-  pub fn add_version(mut self, ver: Pkg) {
+  pub fn add_version(&mut self, ver: Pkg) {
     assert!(self.current.pkg_name == ver.pkg_name);
     if self.current.ctime > ver.ctime {
-      self.versions.push(self.current)
+      self.versions.push(self.current.clone())
     } else {
-      self.versions.push(self.current);
+      self.versions.push(self.current.clone());
       self.current = ver;
     }
   }
