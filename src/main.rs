@@ -9,8 +9,8 @@ fn main() {
   for entry in fs::read_dir(CACHE_DIR).unwrap() {
     let fname = entry.unwrap().file_name().into_string().unwrap();
     if fname.ends_with(".pkg.tar.zst") {
-      let p = pkg::Pkg::new(&fname).unwrap();
-      println!("{}: {}", fname, p.get_name());
+      let p = pkg::Pkg::new(fname).unwrap();
+      println!("{}: {}", p.file_name, p.pkg_name);
     }
   }
 }
